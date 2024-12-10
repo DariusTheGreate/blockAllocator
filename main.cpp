@@ -4,6 +4,7 @@
 #include <random>
 #include <chrono>
 #include <cassert>
+#include <cstring>
 
 #include "BlockAllocator.hpp"
 
@@ -11,11 +12,6 @@ BlockAllocator globalAlloc{256, 1024 * 1024};
 
 std::vector<void*> blocks;
 std::mutex blocksListMtx;
-
-// warnings
-// valgrind
-// doxygen
-// linux
 
 
 template <typename Arg, typename... Args>
