@@ -6,15 +6,22 @@
 
 #include "BlockAllocator.hpp"
 
+/*!
+	@brief Constructor O(n), where n is blockCount + malloc overhead.
+	throws runtime_error in case blockCount + blockSize is zero or malloc failed.
+
+	@param blocksSize Size of one chunk.
+	@param blockCount Number of chunks.
+*/
 BlockAllocator::BlockAllocator(uint32_t blockSize, uint32_t blockCount) : _blockSize(blockSize), _blockCount(blockCount)
 {
 	if(blockSize == 0 || blockCount == 0)
-		throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Won't allocate 0 bytes of memory");// NOT COOL
+		throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Won't allocate 0 bytes of memory");
 
-	_dataPtr = malloc(blockSize * blockCount); // CHECK ERRNO MB?
+	_dataPtr = malloc(blockSize * blockCount); 
 
 	if(!_dataPtr)
-		throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Couldn't allocate memory");// NOT COOL
+		throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Couldn't allocate memory");
 
 	for (uint32_t i = 0; i < blockCount; i++)
     {
@@ -27,36 +34,57 @@ BlockAllocator::BlockAllocator(uint32_t blockSize, uint32_t blockCount) : _block
 }
 
 
+/*!
+	@brief Move constructor.
+*/
 BlockAllocator::BlockAllocator(BlockAllocator&& alloc_in) noexcept
 {
     _blockSize = alloc_in._blockSize;
+    _blockCount = alloc_in._blockCount;
     _usedMem = alloc_in._usedMem;
     _dataPtr = alloc_in._dataPtr;
+    _chunksHead = alloc_in._chunksHead;
+
     alloc_in._dataPtr= nullptr;
     alloc_in._usedMem = alloc_in._blockSize = alloc_in._blockCount = 0;
+    alloc_in._chunksHead = nullptr;
 }
 
+/*!
+	@brief Move assignment.
+*/
 BlockAllocator& BlockAllocator::operator = (BlockAllocator&& alloc_in) noexcept
 {
     if (this != &alloc_in)
     {
         _blockSize = alloc_in._blockSize;
+	    _blockCount = alloc_in._blockCount;
         _usedMem = alloc_in._usedMem;
         _dataPtr = alloc_in._dataPtr;
+	    _chunksHead = alloc_in._chunksHead;
+
         alloc_in._dataPtr = nullptr;
         alloc_in._usedMem = alloc_in._blockSize = alloc_in._blockCount = 0;
+	    alloc_in._chunksHead = nullptr;
     }
     return *this;
 }
 
+/*!
+	@brief Destructor.
+*/
 BlockAllocator::~BlockAllocator()
 {
 	free(_dataPtr);	
 }
 
-void* BlockAllocator::allocate()
+/*!
+	@brief Increment _usedMem value and gives free chunk.
+*/
+void* BlockAllocator::allocate() noexcept
 {
-	std::unique_lock<std::mutex>{_lock};
+	std::unique_lock<std::mutex> lck(_lock);
+
 	if(_blockSize + _usedMem > _blockSize * _blockCount)
 		return nullptr;
 
@@ -68,33 +96,35 @@ void* BlockAllocator::allocate()
 	return curr;
 }
 
-void* BlockAllocator::allocate(uint32_t sz_in)// Think about it
-{
-	std::unique_lock<std::mutex>{_lock};
-	if(sz_in % _blockSize != 0)	
-		throw std::runtime_error("BlockAllocator::allocate(uint32_t): Trying to allocate size not aligned with blockSize");
-	return nullptr;
-}
-
-void BlockAllocator::deallocate(void* ptr)
+/*!
+	@brief Decrement _usedMem value and stores free chunk.
+*/
+void BlockAllocator::deallocate(void* ptr) noexcept
 {
 	if(_usedMem == 0)
 		return;
-	std::unique_lock<std::mutex>{_lock};
-	auto* newChunk = reinterpret_cast<Chunk*>(ptr); // NULLIFY HERE?
+
+	std::unique_lock<std::mutex> lck(_lock);
+	auto* newChunk = reinterpret_cast<Chunk*>(ptr);
     newChunk->next = _chunksHead;
     _chunksHead = newChunk;
     _usedMem -= _blockSize;
 }
 
+/*!
+	@brief Logs Info
+*/
 void BlockAllocator::LogInfo()
 {
-	std::cout << "BlockAllocator State: UsedMem - " << _usedMem << "\n"; //"; FreeList size - " << GetFreeListSize() << "\n";
+	std::cout << "BlockAllocator State: UsedMem - " << _usedMem << "\n"; 
 }
 
-uint32_t BlockAllocator::GetFreeListSize()
+/*!
+	@brief Traverse free list and counts number of nodes.
+*/
+uint32_t BlockAllocator::GetFreeListSize() noexcept
 {
-	std::unique_lock<std::mutex>(_lock);
+	std::unique_lock<std::mutex> lck(_lock);
 	if(!_chunksHead)
 		return 0;
 
