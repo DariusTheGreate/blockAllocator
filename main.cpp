@@ -1,84 +1,79 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <random>
+#include <chrono>
 
-class BlockAllocator
+#include "BlockAllocator.hpp"
+
+BlockAllocator globalAlloc{256, 1024 * 1024};
+
+std::vector<void*> blocks;
+std::mutex blocksListMtx;
+
+void alloc(int)
 {
-	public:
-		BlockAllocator(uint32_t blockSize, uint32_t blockCount) : _blockSize(blockSize), _blockCount(blockCount)
-		{
-			if(blockSize == 0 || blockCount == 0)
-				throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Won't allocate 0 bytes of memory");// NOT COOL
+	try{
+		while(1){
+			std::random_device dev;
+		    std::mt19937 rng(dev());
+		    std::uniform_int_distribution<std::mt19937::result_type> dist(1,10); 
+		    std::this_thread::sleep_for(std::chrono::milliseconds(100 * dist(rng)));
+		    
+		    std::cout << "allocate\n";
+		    std::unique_lock<std::mutex>(blocksListMtx);
+			blocks.push_back(globalAlloc.allocate());
 
-			_dataPtr = malloc(blockSize * blockCount); // CHECK ERRNO MB?
-
-			if(!_dataPtr)
-				throw std::runtime_error("BlockAllocator::BlockAllocator(uint32_t, uint32_t) Couldn't allocate memory");// NOT COOL
-
-			for (uint32_t i = 0; i < blockCount; i++)
-		    {
-		        const uint64_t chunkAddress = reinterpret_cast<uint64_t>(_dataPtr) + i * blockSize;
-		        Chunk* newFreeChunk = reinterpret_cast<Chunk*>(chunkAddress);
-		        newFreeChunk->next = _chunksHead;
-		        _chunksHead = newFreeChunk;
-		    }
+			globalAlloc.LogInfo();
 		}
+	}
+	catch(std::exception& e)
+	{
+		std::cout << e.what() << "\n";
+	}
+}
 
-		void* allocate()
-		{
-			std::unique_lock<std::mutex>{_lock};
-			if(_blockSize + _usedMem > _blockSize * _blockCount)
-				return nullptr;
+void dealloc(int)
+{
+	try{
+		while(1){
+			std::random_device dev;
+		    std::mt19937 rng(dev());
+		    std::uniform_int_distribution<std::mt19937::result_type> dist(1,10); 
+		    std::this_thread::sleep_for(std::chrono::milliseconds(1000 * dist(rng)));
 
-			auto* curr = _chunksHead;
-			auto* next = _chunksHead->next;
-			_chunksHead = next;
-			_usedMem += _blockSize;
+		    std::cout << "deallocate\n";
+		    std::unique_lock<std::mutex>(blocksListMtx);
+			if(blocks.size() > 0)
+				globalAlloc.deallocate(*(blocks.end() - 1));
 
-			return curr;
+			globalAlloc.LogInfo();
 		}
+	}
+	catch(std::exception& e)
+	{
+		std::cout << e.what() << "\n";
+	}
+}
 
-		void* allocate(uint32_t sz_in)// Think about it
-		{
-			std::unique_lock<std::mutex>{_lock};
-			if(sz_in % _blockSize != 0)	
-				throw std::runtime_error("BlockAllocator::allocate(uint32_t): Trying to allocate size not aligned with blockSize");
-			return nullptr;
-		}
+void testMultithreadedRandomized()
+{
+	std::thread t1{alloc, 0};
+	std::thread t2{dealloc, 0};
 
-		void deallocate(void* ptr)
-		{
-			std::unique_lock<std::mutex>{_lock};
-			auto* newChunk = reinterpret_cast<Chunk*>(ptr); // NULLIFY HERE?
-		    newChunk->next = _chunksHead;
-		    _chunksHead = newChunk;
-		    _usedMem -= _blockSize;
-		}
-
-		~BlockAllocator()
-		{
-			free(_dataPtr);	
-		}
-
-	private:
-		uint32_t   _blockSize  = 0;
-		uint32_t   _blockCount = 0;
-		uint32_t   _usedMem    = 0;
-		void*      _dataPtr    = nullptr;
-		std::mutex _lock;
-
-		 // Stack linked list for free chunks
-	    struct Chunk { Chunk* next; };
-	    Chunk*     _chunksHead = nullptr;
-};
+	std::thread t3{alloc, 0};
+	std::thread t4{alloc, 0};
+	t1.join();
+	t2.join();
+	t3.join();
+	t4.join();
+}
 
 int main()
 {
 	BlockAllocator alloc{1024, 1024};
 
-	void* dat = alloc.allocate();
-
-	alloc.deallocate(dat);
+	testMultithreadedRandomized();
 
 	return 0;
 }
