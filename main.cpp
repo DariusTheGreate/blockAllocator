@@ -8,7 +8,7 @@
 
 #include "BlockAllocator.hpp"
 
-BlockAllocator globalAlloc{256, 1024 * 1024};
+BlockAllocator globalAlloc{ 256, 1024 * 1024 };
 
 std::vector<void*> blocks;
 std::mutex blocksListMtx;
@@ -17,29 +17,31 @@ std::mutex blocksListMtx;
 template <typename Arg, typename... Args>
 void print(Arg&& arg, Args&&... args)
 {
-    std::cout << std::forward<Arg>(arg);
-    using expander = int[];
-    (void)expander{0, (void(std::cout << ' ' << std::forward<Args>(args)), 0)...};
+	std::cout << std::forward<Arg>(arg);
+	using expander = int[];
+	(void)expander {
+		0, (void(std::cout << ' ' << std::forward<Args>(args)), 0)...
+	};
 }
 
 
 void allocWithRandomDelay(int)
 {
-	try{
-		while(1){
+	try {
+		while (1) {
 			std::random_device dev;
-		    std::mt19937 rng(dev());
-		    std::uniform_int_distribution<std::mt19937::result_type> dist(1,10); 
-		    std::this_thread::sleep_for(std::chrono::milliseconds(100 * dist(rng)));
-		    
-		    print("allocate\n");
-		    std::unique_lock<std::mutex> lck(blocksListMtx);
+			std::mt19937 rng(dev());
+			std::uniform_int_distribution<std::mt19937::result_type> dist(1, 10);
+			std::this_thread::sleep_for(std::chrono::milliseconds(100 * dist(rng)));
+
+			print("allocate\n");
+			std::unique_lock<std::mutex> lck(blocksListMtx);
 			blocks.push_back(globalAlloc.allocate());
 
 			globalAlloc.LogInfo();
 		}
 	}
-	catch(std::exception& e)
+	catch (std::exception& e)
 	{
 		std::cout << e.what() << "\n";
 	}
@@ -47,22 +49,22 @@ void allocWithRandomDelay(int)
 
 void deallocWithRandomDelay(int)
 {
-	try{
-		while(1){
+	try {
+		while (1) {
 			std::random_device dev;
-		    std::mt19937 rng(dev());
-		    std::uniform_int_distribution<std::mt19937::result_type> dist(1,10); 
-		    std::this_thread::sleep_for(std::chrono::milliseconds(1000 * dist(rng)));
+			std::mt19937 rng(dev());
+			std::uniform_int_distribution<std::mt19937::result_type> dist(1, 10);
+			std::this_thread::sleep_for(std::chrono::milliseconds(1000 * dist(rng)));
 
-		    print("deallocate\n");
-		    std::unique_lock<std::mutex> lck(blocksListMtx);
-			if(blocks.size() > 0)
+			print("deallocate\n");
+			std::unique_lock<std::mutex> lck(blocksListMtx);
+			if (blocks.size() > 0)
 				globalAlloc.deallocate(*(blocks.end() - 1));
 
 			globalAlloc.LogInfo();
 		}
 	}
-	catch(std::exception& e)
+	catch (std::exception& e)
 	{
 		std::cout << e.what() << "\n";
 	}
@@ -72,16 +74,21 @@ void deallocWithRandomDelay(int)
 void testAllocation()
 {
 	print("---testAllocation()---\n");
-	BlockAllocator alloc{1024, 1024};
-	void* data = alloc.allocate();	
+	BlockAllocator alloc{ 1024, 1024 };
+	void* data = alloc.allocate();
 	std::memset(data, 1, 1024);
 
-	for(uint32_t i = 0; i < 1024 * 2; ++i)
-		alloc.allocate();	
+	// test case intended to show that no matter how much time we allocate we wont break anything.
+	for (uint32_t i = 0; i < 1024 * 2; ++i) {
+		void* data = alloc.allocate();
+		std::cout << "Alloc num:" << i << " ptr:" << data << "\n";
+		if (data)
+			std::memset(data, 0, 1024);
+	}
 
 	assert(alloc.GetFreeListSize() == 0);
 	assert(alloc.GetUsedMem() == 1024 * 1024);
-	assert(alloc.allocate() == nullptr);	
+	assert(alloc.allocate() == nullptr);
 
 	alloc.LogInfo();
 }
@@ -118,38 +125,38 @@ void testMove()
 void testShuffle()
 {
 	print("---testShuffle()---\n");
-	for(uint32_t i = 0; i < 10000; ++i)
+	for (uint32_t i = 0; i < 10000; ++i)
 	{
 		std::random_device dev;
-	    std::mt19937 rng(dev());
-	    std::uniform_int_distribution<std::mt19937::result_type> dist(1,2); 
-	    if(dist(rng) == 1)
-	    {
-		    print("allocate\n");
-		    std::unique_lock<std::mutex> lck(blocksListMtx);
+		std::mt19937 rng(dev());
+		std::uniform_int_distribution<std::mt19937::result_type> dist(1, 2);
+		if (dist(rng) == 1)
+		{
+			print("allocate\n");
+			std::unique_lock<std::mutex> lck(blocksListMtx);
 			blocks.push_back(globalAlloc.allocate());
 			globalAlloc.LogInfo();
-	    }
-	    else
-	    {
-	    	
-		    print("deallocate\n");
-		    std::unique_lock<std::mutex> lck(blocksListMtx);
-			if(blocks.size() > 0)
+		}
+		else
+		{
+
+			print("deallocate\n");
+			std::unique_lock<std::mutex> lck(blocksListMtx);
+			if (blocks.size() > 0)
 				globalAlloc.deallocate(*(blocks.end() - 1));
 
 			globalAlloc.LogInfo();
-	    }
+		}
 	}
 }
 
 void testMultithreadedRandomized()
 {
 	print("---testMultithreadedRandomized()---\n");
-	std::thread t1{allocWithRandomDelay, 0};
-	std::thread t2{deallocWithRandomDelay, 0};
-	std::thread t3{allocWithRandomDelay, 0};
-	std::thread t4{deallocWithRandomDelay, 0};
+	std::thread t1{ allocWithRandomDelay, 0 };
+	std::thread t2{ deallocWithRandomDelay, 0 };
+	std::thread t3{ allocWithRandomDelay, 0 };
+	std::thread t4{ deallocWithRandomDelay, 0 };
 	t1.join();
 	t2.join();
 	t3.join();
